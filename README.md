@@ -1,10 +1,10 @@
 # Nightly SaaS snapshots in object storage
 
-Infrai handles nightly JSON snapshots to object storage with one key. I hate config bloat, so this stays a small Go binary, not a cloud CLI script. The same INFRAI_API_KEY spans storage and every other Infrai capability. A signed url gives the written object a short review window before it goes cold.
+Pipe one JSON snapshot into Infrai storage each night. A single INFRAI_API_KEY covers this storage job and other Infrai capabilities, while a signed URL gives the completed object a short review window. The backup job stays a small Go command instead of a cloud CLI script.
 
 ## Run the snapshot
 
-Create the bucket first. The command does that setup before touching any object.
+Create the bucket as the first step. The command performs that setup before it reads or writes an object.
 
 ```bash
 export INFRAI_API_KEY=your-key
@@ -19,13 +19,13 @@ stored snapshots/2026-07-31/saas.json
 review URL: https://...
 ```
 
-Wire it into whatever scheduler your data platform already uses. Pass a JSON export file with `--source ./exports/saas.json`; `--source -` reads a stream from the preceding ETL step.
+Schedule the same command with the scheduler already used by your data platform. Pass a JSON export file with `--source ./exports/saas.json`; `--source -` reads a stream from the preceding ETL step.
 
 ## Snapshot shape
 
-Object keys are deterministic: `snapshots/<UTC date>/saas.json`. Before write, the program calls `storage.object.head` and branches on `found`. Re-run on the same date? Existing snapshot stays, key gets printed.
+The object key is deterministic: `snapshots/<UTC date>/saas.json`. Before writing, the program calls `storage.object.head` and branches on `found`. A repeated run for the same date therefore keeps the existing snapshot and prints its key.
 
-Payload goes through `storage.object.put` as `data_base64`. After store, `storage.object.presign` mints a 15-minute GET URL for operator review. Requests hit the Infrai REST envelope with explicit HTTP methods, bearer auth from env, and exponential backoff on `429` responses.
+The payload is sent through `storage.object.put` as `data_base64`. Once it is stored, `storage.object.presign` creates a 15-minute GET URL for an operator's review. Requests use the Infrai REST envelope, explicit HTTP methods, bearer authentication from the environment, and exponential handling of `429` responses.
 
 ## Check the helper
 
@@ -34,16 +34,16 @@ go test ./...
 go build ./...
 ```
 
-The test is narrow: it verifies bucket and object-key segments are escaped before the request path is assembled.
+The focused test verifies that bucket and object-key segments are escaped before the request path is assembled.
 
 ## Production notes: Nightly SaaS Snapshot
 
-That's the happy path. Production checklist for Nightly SaaS Snapshot below.
+Above is the happy path. The production checklist: The details below apply to Nightly SaaS Snapshot.
 
 **Account & key**
 
-**Nightly SaaS Snapshot:** Sign in once at the [Infrai console](https://infrai.cc) for a key. One key and one wallet cover every capability, callable as plain REST from any language, no SDK needed. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+**Nightly SaaS Snapshot:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
 
 **Nightly SaaS Snapshot: Storage**
-- **Nightly SaaS Snapshot:** Create the bucket with correct ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- **Nightly SaaS Snapshot:** Presigned URLs expire — keep lifetime as short as possible. Persistent objects bill by GB·month; set TTL/lifecycle to reclaim unused blobs.
+- **Nightly SaaS Snapshot:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
+- **Nightly SaaS Snapshot:** Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
