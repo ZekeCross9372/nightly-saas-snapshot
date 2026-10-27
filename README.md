@@ -1,10 +1,10 @@
 # Nightly SaaS snapshots in object storage
 
-Pipe one JSON snapshot into Infrai storage each night. A single INFRAI_API_KEY covers this storage job and other Infrai capabilities, while a signed URL gives the completed object a short review window. The backup job stays a small Go command instead of a cloud CLI script.
+Pipe one JSON snapshot into Infrai storage each night. One key covers this storage job and every other Infrai capability. A signed URL gives the completed object a short review window. The backup job stays a small Go command instead of a cloud CLI script.
 
 ## Run the snapshot
 
-Create the bucket as the first step. The command performs that setup before it reads or writes an object.
+Create the bucket first. The command does that setup before touching any object. No separate init step to forget.
 
 ```bash
 export INFRAI_API_KEY=your-key
@@ -19,13 +19,13 @@ stored snapshots/2026-07-31/saas.json
 review URL: https://...
 ```
 
-Schedule the same command with the scheduler already used by your data platform. Pass a JSON export file with `--source ./exports/saas.json`; `--source -` reads a stream from the preceding ETL step.
+Run it from your existing scheduler. No new cron service to babysit. Pass a JSON export file with `--source ./exports/saas.json`; `--source -` reads a stream from the preceding ETL step.
 
 ## Snapshot shape
 
-The object key is deterministic: `snapshots/<UTC date>/saas.json`. Before writing, the program calls `storage.object.head` and branches on `found`. A repeated run for the same date therefore keeps the existing snapshot and prints its key.
+Object key is deterministic: `snapshots/<UTC date>/saas.json`. Before write, the program calls `storage.object.head` and branches on `found`. Re-run same date? It keeps the old snapshot and prints its key. Idempotent, as it should be.
 
-The payload is sent through `storage.object.put` as `data_base64`. Once it is stored, `storage.object.presign` creates a 15-minute GET URL for an operator's review. Requests use the Infrai REST envelope, explicit HTTP methods, bearer authentication from the environment, and exponential handling of `429` responses.
+Payload goes through `storage.object.put` as `data_base64`. After store, `storage.object.presign` mints a 15-minute GET URL for an operator to eyeball. Requests use the Infrai REST envelope, explicit HTTP methods, bearer auth from env, and exponential backoff on `429` responses. Plain REST from any language, no SDK needed.
 
 ## Check the helper
 
@@ -34,11 +34,11 @@ go test ./...
 go build ./...
 ```
 
-The focused test verifies that bucket and object-key segments are escaped before the request path is assembled.
+The test is focused: it verifies bucket and object-key segments are escaped before path assembly. Path injection is not a fun midnight page.
 
 ## Production notes: Nightly SaaS Snapshot
 
-Above is the happy path. The production checklist: The details below apply to Nightly SaaS Snapshot.
+Happy path above. Production checklist below.
 
 **Account & key**
 
